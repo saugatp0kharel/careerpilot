@@ -1,154 +1,146 @@
-import { useState } from "react";
-import "./App.css";
+import { useState, useEffect } from "react";
+import { auth, db } from "./firebase";
+
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+} from "firebase/auth";
+
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 
 function App() {
-  const [applications, setApplications] = useState([]);
+  const [user, setUser] = useState(null);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
   const [company, setCompany] = useState("");
   const [position, setPosition] = useState("");
 
-  const addApplication = (e) => {
-    e.preventDefault();
+  const [applications, setApplications] = useState([]);
 
-    if (!company || !position) {
-      alert("Please enter company and position");
-      return;
-    }
+  // 🔐 Check login state
+  useEffect(() => {
+    onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) fetchApplications(currentUser.uid);
+    });
+  }, []);
 
-    const newApplication = {
-      id: Date.now(),
-      company: company,
-      position: position,
-      status: "Pending",
-      appliedDate: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toLocaleString(),
-    };
-
-    setApplications([...applications, newApplication]);
-    setCompany("");
-    setPosition("");
-  };
-
-  const updateApplication = (id, field, value) => {
-    const updatedApplications = applications.map((app) =>
-      app.id === id
-        ? {
-            ...app,
-            [field]: value,
-            updatedAt: new Date().toLocaleString(),
-          }
-        : app
+  // 📥 Fetch user data
+  const fetchApplications = async (uid) => {
+    const q = query(
+      collection(db, "applications"),
+      where("userId", "==", uid)
     );
 
-    setApplications(updatedApplications);
+    const snapshot = await getDocs(q);
+
+    const data = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    setApplications(data);
   };
 
-  const deleteApplication = (id) => {
-    const filteredApplications = applications.filter((app) => app.id !== id);
-    setApplications(filteredApplications);
+  // 📝 Signup
+  const signup = async () => {
+    await createUserWithEmailAndPassword(auth, email, password);
   };
 
+  // 🔐 Login
+  const login = async () => {
+    await signInWithEmailAndPassword(auth, email, password);
+  };
+
+  // 🚪 Logout
+  const logout = async () => {
+    await signOut(auth);
+    setApplications([]);
+  };
+
+  // ➕ Add Application
+  const addApplication = async () => {
+    if (!company || !position) return;
+
+    await addDoc(collection(db, "applications"), {
+      company,
+      position,
+      userId: user.uid,
+      createdAt: new Date(),
+    });
+
+    setCompany("");
+    setPosition("");
+
+    fetchApplications(user.uid);
+  };
+
+  // 🔒 If NOT logged in
+  if (!user) {
+    return (
+      <div style={{ textAlign: "center", marginTop: "100px" }}>
+        <h2>CareerPilot 🚀</h2>
+
+        <input
+          placeholder="Email"
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <br /><br />
+
+        <input
+          placeholder="Password"
+          type="password"
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <br /><br />
+
+        <button onClick={login}>Login</button>
+        <button onClick={signup}>Signup</button>
+      </div>
+    );
+  }
+
+  // ✅ Logged in UI
   return (
-    <div className="container">
-      <h1>CareerPilot 🚀</h1>
-      <p className="subtitle">Track your job and internship applications</p>
+    <div style={{ textAlign: "center", marginTop: "50px" }}>
+      <h2>CareerPilot 🚀</h2>
 
-      <form onSubmit={addApplication} className="form">
-        <input
-          type="text"
-          placeholder="Company name"
-          value={company}
-          onChange={(e) => setCompany(e.target.value)}
-        />
+      <p>Welcome: {user.email}</p>
+      <button onClick={logout}>Logout</button>
 
-        <input
-          type="text"
-          placeholder="Position"
-          value={position}
-          onChange={(e) => setPosition(e.target.value)}
-        />
+      <br /><br />
 
-        <button type="submit">Add Application</button>
-      </form>
+      <input
+        placeholder="Company"
+        value={company}
+        onChange={(e) => setCompany(e.target.value)}
+      />
 
-      <table>
-        <thead>
-          <tr>
-            <th>Company</th>
-            <th>Position</th>
-            <th>Status</th>
-            <th>Applied Date</th>
-            <th>Last Updated</th>
-            <th>Action</th>
-          </tr>
-        </thead>
+      <input
+        placeholder="Position"
+        value={position}
+        onChange={(e) => setPosition(e.target.value)}
+      />
 
-        <tbody>
-          {applications.map((app) => (
-            <tr key={app.id}>
-              <td>
-                <input
-                  type="text"
-                  value={app.company}
-                  onChange={(e) =>
-                    updateApplication(app.id, "company", e.target.value)
-                  }
-                />
-              </td>
+      <button onClick={addApplication}>Add</button>
 
-              <td>
-                <input
-                  type="text"
-                  value={app.position}
-                  onChange={(e) =>
-                    updateApplication(app.id, "position", e.target.value)
-                  }
-                />
-              </td>
+      <h3>Your Applications</h3>
 
-              <td>
-                <select
-                  value={app.status}
-                  onChange={(e) =>
-                    updateApplication(app.id, "status", e.target.value)
-                  }
-                >
-                  <option>Pending</option>
-                  <option>Applied</option>
-                  <option>Waiting for Interview</option>
-                  <option>Interview Done</option>
-                  <option>Offer</option>
-                  <option>Rejected</option>
-                </select>
-              </td>
-
-              <td>
-                <input
-                  type="date"
-                  value={app.appliedDate}
-                  onChange={(e) =>
-                    updateApplication(app.id, "appliedDate", e.target.value)
-                  }
-                />
-              </td>
-
-              <td>{app.updatedAt}</td>
-
-              <td>
-                <button
-                  className="delete-btn"
-                  onClick={() => deleteApplication(app.id)}
-                >
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {applications.length === 0 && (
-        <p className="empty">No applications added yet.</p>
-      )}
+      {applications.map((app) => (
+        <div key={app.id}>
+          {app.company} - {app.position}
+        </div>
+      ))}
     </div>
   );
 }
